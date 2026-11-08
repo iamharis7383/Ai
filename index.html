@@ -36,7 +36,7 @@
 <body class="h-screen overflow-hidden flex flex-col bg-darkbg text-gray-100 selection:bg-accent selection:text-white">
 
     <!-- ROOT CONTAINER SWITCHER -->
-    <div id="app-root" class="flex-1 flex overflow-hidden"></div>
+    <div id="app-root" class="flex-1 flex overflow-hidden w-full h-full"></div>
 
     <!-- GLOBAL NOTIFICATION TOAST -->
     <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col space-y-2 pointer-events-none"></div>
@@ -55,7 +55,6 @@
             getChats: (email) => JSON.parse(localStorage.getItem(`aether_chats_${email}`) || '[]'),
             saveChats: (email, chats) => localStorage.setItem(`aether_chats_${email}`, JSON.stringify(chats)),
             
-            // Returns pre-configured key automatically
             getApiKey: (email) => HARDCODED_API_KEY
         };
 
@@ -68,8 +67,16 @@
             if (user) {
                 currentView = 'chat';
                 const chats = DB.getChats(user.email);
-                if (chats.length > 0 && !activeChatId) {
+                if (chats.length > 0) {
                     activeChatId = chats[0].id;
+                } else {
+                    const newChat = {
+                        id: 'chat_' + Date.now(),
+                        title: 'Welcome Session',
+                        messages: [{ role: 'assistant', content: `Hello **${user.name}**! I am fully operational. How can I assist your workflow today?` }]
+                    };
+                    DB.saveChats(user.email, [newChat]);
+                    activeChatId = newChat.id;
                 }
             } else {
                 currentView = 'landing';
@@ -79,6 +86,7 @@
 
         function showToast(message, type = 'success') {
             const container = document.getElementById('toast-container');
+            if (!container) return;
             const toast = document.createElement('div');
             toast.className = `pointer-events-auto px-4 py-3 rounded-xl shadow-2xl text-sm font-medium flex items-center space-x-2 border transition transform translate-y-2 opacity-0 duration-300 ${
                 type === 'success' ? 'bg-zinc-900 border-zinc-700 text-emerald-400' : 'bg-zinc-900 border-zinc-700 text-rose-400'
@@ -94,6 +102,7 @@
 
         function render() {
             const root = document.getElementById('app-root');
+            if (!root) return;
             root.innerHTML = '';
 
             if (currentView === 'landing') {
@@ -104,14 +113,16 @@
                 root.innerHTML = renderSignupPage();
             } else if (currentView === 'chat') {
                 root.innerHTML = renderChatDashboard();
-                initChatListeners();
+                setTimeout(() => {
+                    initChatListeners();
+                }, 50);
             }
         }
 
         // --- 1. LANDING PAGE ---
         function renderLandingPage() {
             return `
-                <div class="flex-1 flex flex-col overflow-y-auto custom-scrollbar">
+                <div class="flex-1 flex flex-col overflow-y-auto custom-scrollbar w-full h-full">
                     <header class="w-full border-b border-bordercolor bg-darkbg/80 backdrop-blur sticky top-0 z-40 px-6 py-4 flex items-center justify-between">
                         <div class="flex items-center space-x-3 cursor-pointer" onclick="currentView='landing'; render();">
                             <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">⚡</div>
@@ -123,7 +134,7 @@
                         </div>
                     </header>
 
-                    <div class="max-w-5xl mx-auto px-6 py-20 text-center flex flex-col items-center flex-1 justify-center">
+                    <div class="max-w-5xl mx-auto px-6 py-20 text-center flex flex-col items-center flex-1 justify-center my-auto">
                         <div class="inline-flex items-center space-x-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold mb-6">
                             <span>✨ Next-Gen Autonomous Reasoning Engine</span>
                         </div>
@@ -153,7 +164,7 @@
         // --- 2. LOGIN & SIGNUP VIEWS ---
         function renderLoginPage() {
             return `
-                <div class="flex-1 flex items-center justify-center p-6 bg-darkbg">
+                <div class="flex-1 flex items-center justify-center p-6 bg-darkbg w-full h-full">
                     <div class="w-full max-w-md bg-panel border border-bordercolor rounded-3xl p-8 shadow-2xl">
                         <div class="flex items-center space-x-3 mb-8">
                             <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white">⚡</div>
@@ -188,7 +199,7 @@
 
         function renderSignupPage() {
             return `
-                <div class="flex-1 flex items-center justify-center p-6 bg-darkbg">
+                <div class="flex-1 flex items-center justify-center p-6 bg-darkbg w-full h-full">
                     <div class="w-full max-w-md bg-panel border border-bordercolor rounded-3xl p-8 shadow-2xl">
                         <div class="flex items-center space-x-3 mb-8">
                             <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white">⚡</div>
@@ -236,7 +247,17 @@
                 DB.setCurrentUser(user);
                 currentView = 'chat';
                 const chats = DB.getChats(user.email);
-                activeChatId = chats.length > 0 ? chats[0].id : null;
+                if (chats.length > 0) {
+                    activeChatId = chats[0].id;
+                } else {
+                    const newChat = {
+                        id: 'chat_' + Date.now(),
+                        title: 'New Conversation',
+                        messages: []
+                    };
+                    DB.saveChats(user.email, [newChat]);
+                    activeChatId = newChat.id;
+                }
                 showToast(`Welcome back, ${user.name}!`);
                 render();
             } else {
@@ -279,12 +300,19 @@
         // --- 3. CHAT DASHBOARD VIEW ---
         function renderChatDashboard() {
             const user = DB.getCurrentUser();
+            if (!user) {
+                currentView = 'login';
+                return renderLoginPage();
+            }
             const chats = DB.getChats(user.email);
-            const activeChat = chats.find(c => c.id === activeChatId) || chats[0];
+            const activeChat = chats.find(c => c.id === activeChatId) || chats[0] || { id: 'default', title: 'New Chat', messages: [] };
+            if (!activeChatId && activeChat) {
+                activeChatId = activeChat.id;
+            }
 
             return `
                 <!-- Sidebar -->
-                <aside id="sidebar" class="w-72 bg-panel border-r border-bordercolor flex flex-col justify-between hidden md:flex h-full select-none">
+                <aside id="sidebar" class="w-72 bg-panel border-r border-bordercolor flex flex-col justify-between hidden md:flex h-full select-none flex-shrink-0">
                     <div>
                         <div class="p-4 border-b border-bordercolor flex items-center justify-between">
                             <div class="flex items-center space-x-2.5 cursor-pointer" onclick="currentView='landing'; render();">
@@ -328,8 +356,8 @@
                 </aside>
 
                 <!-- Main Workspace -->
-                <main class="flex-1 flex flex-col h-full bg-darkbg relative">
-                    <header class="h-14 border-b border-bordercolor flex items-center justify-between px-6 bg-darkbg/80 backdrop-blur z-20">
+                <main class="flex-1 flex flex-col h-full bg-darkbg relative overflow-hidden">
+                    <header class="h-14 border-b border-bordercolor flex items-center justify-between px-6 bg-darkbg/80 backdrop-blur z-20 flex-shrink-0">
                         <div class="flex items-center space-x-3">
                             <button onclick="toggleMobileSidebar()" class="md:hidden text-gray-400 hover:text-white text-sm p-1">☰</button>
                             <span class="font-semibold text-sm text-gray-200 truncate max-w-xs md:max-w-md">${activeChat ? activeChat.title : 'New Session'}</span>
@@ -360,7 +388,7 @@
                         `}
                     </div>
 
-                    <div class="p-4 md:p-6 bg-gradient-to-t from-darkbg via-darkbg to-transparent">
+                    <div class="p-4 md:p-6 bg-gradient-to-t from-darkbg via-darkbg to-transparent flex-shrink-0">
                         <div class="max-w-3xl mx-auto">
                             <form id="chat-form" onsubmit="handleSendMessage(event)" class="relative bg-panel border border-bordercolor rounded-2xl p-2.5 shadow-2xl focus-within:border-blue-500 transition">
                                 <textarea id="chat-input" rows="1" placeholder="Message Aether AI..." class="w-full bg-transparent text-gray-200 placeholder-gray-500 text-sm p-2 focus:outline-none resize-none max-h-36 custom-scrollbar"></textarea>
@@ -398,6 +426,7 @@
 
         function createNewChat() {
             const user = DB.getCurrentUser();
+            if (!user) return;
             const chats = DB.getChats(user.email);
             const newChat = {
                 id: 'chat_' + Date.now(),
@@ -417,6 +446,7 @@
 
         function deleteChat(chatId) {
             const user = DB.getCurrentUser();
+            if (!user) return;
             let chats = DB.getChats(user.email);
             chats = chats.filter(c => c.id !== chatId);
             if (chats.length === 0) {
@@ -449,10 +479,12 @@
             if (isGenerating) return;
 
             const input = document.getElementById('chat-input');
+            if (!input) return;
             const prompt = input.value.trim();
             if (!prompt) return;
 
             const user = DB.getCurrentUser();
+            if (!user) return;
             const apiKey = DB.getApiKey(user.email);
 
             const chats = DB.getChats(user.email);
