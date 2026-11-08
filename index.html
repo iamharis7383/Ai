@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aether AI - Advanced Intelligence Platform</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkbg: '#050505',
+                        panel: '#0a0a0c',
+                        card: '#121216',
+                        bordercolor: '#1f1f2e',
+                        accent: '#3b82f6',
+                        accenthover: '#2563eb'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Marked.js for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #050505; color: #f3f4f6; }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+    </style>
+</head>
+<body class="h-screen overflow-hidden flex flex-col bg-darkbg text-gray-100 selection:bg-accent selection:text-white">
+
+    <!-- ROOT CONTAINER SWITCHER -->
+    <div id="app-root" class="flex-1 flex overflow-hidden"></div>
+
+    <!-- GLOBAL NOTIFICATION TOAST -->
+    <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+    <!-- JAVASCRIPT APPLICATION CORE -->
+    <script>
+        // --- PRE-CONFIGURED API KEY & STORAGE ENGINE ---
+        const HARDCODED_API_KEY = "AQ.Ab8RN6L0qCVRa2g_oJreuPwxUwtjt4a0z-egYmauusDWFXQCsw";
+
+        const DB = {
+            getUsers: () => JSON.parse(localStorage.getItem('aether_users') || '[]'),
+            saveUsers: (users) => localStorage.setItem('aether_users', JSON.stringify(users)),
+            getCurrentUser: () => JSON.parse(localStorage.getItem('aether_current_user') || 'null'),
+            setCurrentUser: (user) => localStorage.setItem('aether_current_user', JSON.stringify(user)),
+            
+            getChats: (email) => JSON.parse(localStorage.getItem(`aether_chats_${email}`) || '[]'),
+            saveChats: (email, chats) => localStorage.setItem(`aether_chats_${email}`, JSON.stringify(chats)),
+            
+            // Returns pre-configured key automatically
+            getApiKey: (email) => HARDCODED_API_KEY
+        };
+
+        let currentView = 'landing'; 
+        let activeChatId = null;
+        let isGenerating = false;
+
+        function initApp() {
+            const user = DB.getCurrentUser();
+            if (user) {
+                currentView = 'chat';
+                const chats = DB.getChats(user.email);
+                if (chats.length > 0 && !activeChatId) {
+                    activeChatId = chats[0].id;
+                }
+            } else {
+                currentView = 'landing';
+            }
+            render();
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `pointer-events-auto px-4 py-3 rounded-xl shadow-2xl text-sm font-medium flex items-center space-x-2 border transition transform translate-y-2 opacity-0 duration-300 ${
+                type === 'success' ? 'bg-zinc-900 border-zinc-700 text-emerald-400' : 'bg-zinc-900 border-zinc-700 text-rose-400'
+            }`;
+            toast.innerHTML = `<span>${type === 'success' ? '✓' : '⚠'}</span><span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => { toast.classList.remove('translate-y-2', 'opacity-0'); }, 10);
+            setTimeout(() => {
+                toast.classList.add('translate-y-2', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        function render() {
+            const root = document.getElementById('app-root');
+            root.innerHTML = '';
+
+            if (currentView === 'landing') {
+                root.innerHTML = renderLandingPage();
+            } else if (currentView === 'login') {
+                root.innerHTML = renderLoginPage();
+            } else if (currentView === 'signup') {
+                root.innerHTML = renderSignupPage();
+            } else if (currentView === 'chat') {
+                root.innerHTML = renderChatDashboard();
+                initChatListeners();
+            }
+        }
+
+        // --- 1. LANDING PAGE ---
+        function renderLandingPage() {
+            return `
+                <div class="flex-1 flex flex-col overflow-y-auto custom-scrollbar">
+                    <header class="w-full border-b border-bordercolor bg-darkbg/80 backdrop-blur sticky top-0 z-40 px-6 py-4 flex items-center justify-between">
+                        <div class="flex items-center space-x-3 cursor-pointer" onclick="currentView='landing'; render();">
+                            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">⚡</div>
+                            <span class="font-bold text-lg tracking-tight">Aether AI</span>
+                        </div>
+                        <div class="flex items-center space-x-4">
+                            <button onclick="currentView='login'; render();" class="text-sm font-medium text-gray-300 hover:text-white px-4 py-2 transition">Sign In</button>
+                            <button onclick="currentView='signup'; render();" class="bg-blue-600 hover:bg-blue-500 text-white font-medium px-4 py-2 rounded-xl text-sm shadow-lg shadow-blue-600/20 transition">Get Started</button>
+                        </div>
+                    </header>
+
+                    <div class="max-w-5xl mx-auto px-6 py-20 text-center flex flex-col items-center flex-1 justify-center">
+                        <div class="inline-flex items-center space-x-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold mb-6">
+                            <span>✨ Next-Gen Autonomous Reasoning Engine</span>
+                        </div>
+                        <h1 class="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 leading-tight">
+                            Intelligence, Unfiltered & <span class="bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-500 bg-clip-text text-transparent">Real-Time.</span>
+                        </h1>
+                        <p class="text-gray-400 text-base md:text-xl max-w-2xl mb-10 leading-relaxed">
+                            Experience lightning-fast generation, deep reasoning capabilities, and seamless multi-thread workflow execution engineered for elite creators.
+                        </p>
+                        <div class="flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-4 w-full justify-center">
+                            <button onclick="currentView='signup'; render();" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-3.5 rounded-2xl shadow-xl shadow-blue-600/30 transition text-base">
+                                Launch Workspace →
+                            </button>
+                            <button onclick="currentView='login'; render();" class="w-full sm:w-auto bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-gray-300 font-semibold px-8 py-3.5 rounded-2xl transition text-base">
+                                Access Account
+                            </button>
+                        </div>
+                    </div>
+
+                    <footer class="border-t border-bordercolor py-6 text-center text-xs text-gray-500">
+                        © 2026 Aether AI System. All rights reserved.
+                    </footer>
+                </div>
+            `;
+        }
+
+        // --- 2. LOGIN & SIGNUP VIEWS ---
+        function renderLoginPage() {
+            return `
+                <div class="flex-1 flex items-center justify-center p-6 bg-darkbg">
+                    <div class="w-full max-w-md bg-panel border border-bordercolor rounded-3xl p-8 shadow-2xl">
+                        <div class="flex items-center space-x-3 mb-8">
+                            <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white">⚡</div>
+                            <div>
+                                <h2 class="text-xl font-bold tracking-tight">Welcome Back</h2>
+                                <p class="text-xs text-gray-400">Enter your credentials to access your workspace</p>
+                            </div>
+                        </div>
+                        <form onsubmit="handleLogin(event)" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 mb-1.5">Email Address</label>
+                                <input type="email" id="login-email" required class="w-full bg-card border border-bordercolor rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition" placeholder="name@domain.com">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 mb-1.5">Password</label>
+                                <input type="password" id="login-password" required class="w-full bg-card border border-bordercolor rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition" placeholder="••••••••">
+                            </div>
+                            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl text-sm shadow-lg shadow-blue-600/20 transition mt-2">
+                                Sign In
+                            </button>
+                        </form>
+                        <div class="mt-6 text-center text-xs text-gray-400">
+                            Don't have an account? <a href="#" onclick="currentView='signup'; render();" class="text-blue-400 hover:underline font-medium">Create Account</a>
+                        </div>
+                        <div class="mt-4 text-center">
+                            <button onclick="currentView='landing'; render();" class="text-xs text-gray-500 hover:text-gray-300">← Back to Home</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderSignupPage() {
+            return `
+                <div class="flex-1 flex items-center justify-center p-6 bg-darkbg">
+                    <div class="w-full max-w-md bg-panel border border-bordercolor rounded-3xl p-8 shadow-2xl">
+                        <div class="flex items-center space-x-3 mb-8">
+                            <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white">⚡</div>
+                            <div>
+                                <h2 class="text-xl font-bold tracking-tight">Create Workspace</h2>
+                                <p class="text-xs text-gray-400">Setup your permanent creator profile</p>
+                            </div>
+                        </div>
+                        <form onsubmit="handleSignup(event)" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 mb-1.5">Full Name</label>
+                                <input type="text" id="signup-name" required class="w-full bg-card border border-bordercolor rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition" placeholder="Haris Awan">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 mb-1.5">Email Address</label>
+                                <input type="email" id="signup-email" required class="w-full bg-card border border-bordercolor rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition" placeholder="name@domain.com">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 mb-1.5">Password</label>
+                                <input type="password" id="signup-password" required class="w-full bg-card border border-bordercolor rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition" placeholder="••••••••">
+                            </div>
+                            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl text-sm shadow-lg shadow-blue-600/20 transition mt-2">
+                                Register & Start
+                            </button>
+                        </form>
+                        <div class="mt-6 text-center text-xs text-gray-400">
+                            Already have an account? <a href="#" onclick="currentView='login'; render();" class="text-blue-400 hover:underline font-medium">Sign In</a>
+                        </div>
+                        <div class="mt-4 text-center">
+                            <button onclick="currentView='landing'; render();" class="text-xs text-gray-500 hover:text-gray-300">← Back to Home</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value.trim();
+            const pass = document.getElementById('login-password').value;
+            const users = DB.getUsers();
+            const user = users.find(u => u.email === email && u.password === pass);
+
+            if (user) {
+                DB.setCurrentUser(user);
+                currentView = 'chat';
+                const chats = DB.getChats(user.email);
+                activeChatId = chats.length > 0 ? chats[0].id : null;
+                showToast(`Welcome back, ${user.name}!`);
+                render();
+            } else {
+                showToast('Invalid email or password.', 'error');
+            }
+        }
+
+        function handleSignup(e) {
+            e.preventDefault();
+            const name = document.getElementById('signup-name').value.trim();
+            const email = document.getElementById('signup-email').value.trim();
+            const password = document.getElementById('signup-password').value;
+
+            const users = DB.getUsers();
+            if (users.some(u => u.email === email)) {
+                showToast('An account with this email already exists.', 'error');
+                return;
+            }
+
+            const newUser = { name, email, password };
+            users.push(newUser);
+            DB.saveUsers(users);
+            DB.setCurrentUser(newUser);
+
+            const initialChat = {
+                id: 'chat_' + Date.now(),
+                title: 'Welcome to Aether AI',
+                messages: [
+                    { role: 'assistant', content: `Hello **${name}**! I am fully operational and linked to live intelligence. How can we accelerate your workflow today?` }
+                ]
+            };
+            DB.saveChats(email, [initialChat]);
+            activeChatId = initialChat.id;
+
+            currentView = 'chat';
+            showToast('Account successfully created!');
+            render();
+        }
+
+        // --- 3. CHAT DASHBOARD VIEW ---
+        function renderChatDashboard() {
+            const user = DB.getCurrentUser();
+            const chats = DB.getChats(user.email);
+            const activeChat = chats.find(c => c.id === activeChatId) || chats[0];
+
+            return `
+                <!-- Sidebar -->
+                <aside id="sidebar" class="w-72 bg-panel border-r border-bordercolor flex flex-col justify-between hidden md:flex h-full select-none">
+                    <div>
+                        <div class="p-4 border-b border-bordercolor flex items-center justify-between">
+                            <div class="flex items-center space-x-2.5 cursor-pointer" onclick="currentView='landing'; render();">
+                                <div class="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-white text-xs">⚡</div>
+                                <span class="font-bold text-sm tracking-tight">Aether AI</span>
+                            </div>
+                            <span class="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">Active</span>
+                        </div>
+
+                        <div class="p-3">
+                            <button onclick="createNewChat()" class="w-full bg-card hover:bg-zinc-800 border border-bordercolor text-gray-200 text-xs font-medium py-2.5 px-3 rounded-xl flex items-center justify-center space-x-2 transition shadow-sm">
+                                <span>+</span><span>New Chat Session</span>
+                            </button>
+                        </div>
+
+                        <div class="px-3 py-2 space-y-1 overflow-y-auto max-h-[calc(100vh-220px)] custom-scrollbar">
+                            <div class="text-[10px] text-gray-500 font-semibold uppercase px-2 mb-1">Recent Conversations</div>
+                            ${chats.map(chat => `
+                                <div onclick="switchChat('${chat.id}')" class="group flex items-center justify-between px-3 py-2 rounded-xl text-xs cursor-pointer transition ${chat.id === activeChatId ? 'bg-blue-600/10 text-blue-400 border border-blue-600/20 font-medium' : 'text-gray-400 hover:bg-card hover:text-gray-200'}">
+                                    <span class="truncate pr-2">${chat.title}</span>
+                                    <button onclick="event.stopPropagation(); deleteChat('${chat.id}')" class="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-rose-400 p-1">×</button>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <div class="p-3 border-t border-bordercolor bg-darkbg/40">
+                        <div class="flex items-center justify-between mb-2 px-2">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-7 h-7 rounded-full bg-blue-600/20 border border-blue-500/30 text-blue-400 flex items-center justify-center text-xs font-bold">
+                                    ${user.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div class="truncate">
+                                    <div class="text-xs font-semibold text-gray-200 truncate max-w-[130px]">${user.name}</div>
+                                    <div class="text-[10px] text-emerald-400 font-medium">● API Connected</div>
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="handleLogout()" class="w-full text-left px-2 py-1.5 text-xs text-rose-400 hover:bg-rose-500/10 rounded-lg transition font-medium">Sign Out</button>
+                    </div>
+                </aside>
+
+                <!-- Main Workspace -->
+                <main class="flex-1 flex flex-col h-full bg-darkbg relative">
+                    <header class="h-14 border-b border-bordercolor flex items-center justify-between px-6 bg-darkbg/80 backdrop-blur z-20">
+                        <div class="flex items-center space-x-3">
+                            <button onclick="toggleMobileSidebar()" class="md:hidden text-gray-400 hover:text-white text-sm p-1">☰</button>
+                            <span class="font-semibold text-sm text-gray-200 truncate max-w-xs md:max-w-md">${activeChat ? activeChat.title : 'New Session'}</span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <div class="flex items-center space-x-1.5 text-xs bg-card border border-bordercolor px-3 py-1.5 rounded-xl">
+                                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                <span class="text-gray-300 font-medium">Live Stream Ready</span>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div id="chat-messages" class="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 custom-scrollbar">
+                        ${activeChat && activeChat.messages.length > 0 ? activeChat.messages.map(msg => `
+                            <div class="flex items-start space-x-4 max-w-3xl mx-auto ${msg.role === 'user' ? 'justify-end' : ''}">
+                                ${msg.role === 'assistant' ? `<div class="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white text-xs flex-shrink-0 shadow-lg shadow-blue-600/20">⚡</div>` : ''}
+                                <div class="max-w-[85%] md:max-w-xl text-sm leading-relaxed ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-3 shadow-lg shadow-blue-600/10' : 'bg-panel border border-bordercolor rounded-2xl rounded-tl-sm p-4 text-gray-200 shadow-sm'}">
+                                    ${msg.role === 'assistant' ? marked.parse(msg.content) : escapeHtml(msg.content)}
+                                </div>
+                                ${msg.role === 'user' ? `<div class="w-8 h-8 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-gray-300 text-xs flex-shrink-0">${user.name.charAt(0).toUpperCase()}</div>` : ''}
+                            </div>
+                        `).join('') : `
+                            <div class="h-full flex flex-col items-center justify-center text-center p-6 text-gray-500">
+                                <div class="w-12 h-12 rounded-2xl bg-panel border border-bordercolor flex items-center justify-center text-blue-400 text-xl mb-4 shadow-xl">⚡</div>
+                                <h3 class="font-semibold text-gray-300 text-base mb-1">Start a conversation</h3>
+                                <p class="text-xs text-gray-500 max-w-sm">Type your prompt below to interact with live streaming intelligence.</p>
+                            </div>
+                        `}
+                    </div>
+
+                    <div class="p-4 md:p-6 bg-gradient-to-t from-darkbg via-darkbg to-transparent">
+                        <div class="max-w-3xl mx-auto">
+                            <form id="chat-form" onsubmit="handleSendMessage(event)" class="relative bg-panel border border-bordercolor rounded-2xl p-2.5 shadow-2xl focus-within:border-blue-500 transition">
+                                <textarea id="chat-input" rows="1" placeholder="Message Aether AI..." class="w-full bg-transparent text-gray-200 placeholder-gray-500 text-sm p-2 focus:outline-none resize-none max-h-36 custom-scrollbar"></textarea>
+                                <div class="flex items-center justify-between pt-2 px-2 border-t border-bordercolor/60 mt-1">
+                                    <div class="text-[10px] text-gray-400">Autonomous Reasoning Mode Active</div>
+                                    <button type="submit" id="send-btn" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-1.5 rounded-xl text-xs transition shadow-md shadow-blue-600/20">
+                                        Send Prompt
+                                    </button>
+                                </div>
+                            </form>
+                            <div class="text-center text-[10px] text-gray-500 mt-2">Aether AI is fully operational. Verify critical outputs.</div>
+                        </div>
+                    </div>
+                </main>
+            `;
+        }
+
+        // --- CONTROLLERS & LIVE STREAMING LOGIC ---
+        function initChatListeners() {
+            const textarea = document.getElementById('chat-input');
+            if (!textarea) return;
+            textarea.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = (this.scrollHeight) + 'px';
+            });
+            textarea.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    document.getElementById('chat-form').dispatchEvent(new Event('submit'));
+                }
+            });
+            const container = document.getElementById('chat-messages');
+            if (container) container.scrollTop = container.scrollHeight;
+        }
+
+        function createNewChat() {
+            const user = DB.getCurrentUser();
+            const chats = DB.getChats(user.email);
+            const newChat = {
+                id: 'chat_' + Date.now(),
+                title: 'New Conversation',
+                messages: []
+            };
+            chats.unshift(newChat);
+            DB.saveChats(user.email, chats);
+            activeChatId = newChat.id;
+            render();
+        }
+
+        function switchChat(chatId) {
+            activeChatId = chatId;
+            render();
+        }
+
+        function deleteChat(chatId) {
+            const user = DB.getCurrentUser();
+            let chats = DB.getChats(user.email);
+            chats = chats.filter(c => c.id !== chatId);
+            if (chats.length === 0) {
+                chats = [{ id: 'chat_' + Date.now(), title: 'New Conversation', messages: [] }];
+            }
+            DB.saveChats(user.email, chats);
+            activeChatId = chats[0].id;
+            render();
+        }
+
+        function handleLogout() {
+            localStorage.removeItem('aether_current_user');
+            currentView = 'landing';
+            showToast('Signed out successfully.');
+            render();
+        }
+
+        function toggleMobileSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            if (sidebar) sidebar.classList.toggle('hidden');
+        }
+
+        function escapeHtml(text) {
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        // --- LIVE STREAMING ENDPOINT ---
+        async function handleSendMessage(e) {
+            e.preventDefault();
+            if (isGenerating) return;
+
+            const input = document.getElementById('chat-input');
+            const prompt = input.value.trim();
+            if (!prompt) return;
+
+            const user = DB.getCurrentUser();
+            const apiKey = DB.getApiKey(user.email);
+
+            const chats = DB.getChats(user.email);
+            const chatIndex = chats.findIndex(c => c.id === activeChatId);
+            if (chatIndex === -1) return;
+
+            if (chats[chatIndex].messages.length === 0) {
+                chats[chatIndex].title = prompt.length > 30 ? prompt.substring(0, 30) + '...' : prompt;
+            }
+
+            chats[chatIndex].messages.push({ role: 'user', content: prompt });
+            input.value = '';
+            input.style.height = 'auto';
+            DB.saveChats(user.email, chats);
+            render();
+
+            isGenerating = true;
+
+            chats[chatIndex].messages.push({ role: 'assistant', content: '...' });
+            DB.saveChats(user.email, chats);
+            render();
+
+            const messagesContainer = document.getElementById('chat-messages');
+            if (messagesContainer) messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+            try {
+                const contents = chats[chatIndex].messages.slice(0, -1).map(m => ({
+                    role: m.role === 'assistant' ? 'model' : 'user',
+                    parts: [{ text: m.content }]
+                }));
+
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents })
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error?.message || 'API request failed.');
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let accumulatedText = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const jsonStr = line.replace('data: ', '').trim();
+                            if (jsonStr) {
+                                const data = JSON.parse(jsonStr);
+                                const textChunk = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                                if (textChunk) {
+                                    accumulatedText += textChunk;
+                                    chats[chatIndex].messages[chats[chatIndex].messages.length - 1].content = accumulatedText;
+                                    DB.saveChats(user.email, chats);
+                                    
+                                    const msgs = document.querySelectorAll('#chat-messages > div');
+                                    const lastMsg = msgs[msgs.length - 1];
+                                    if (lastMsg) {
+                                        const bubble = lastMsg.querySelector('.bg-panel');
+                                        if (bubble) bubble.innerHTML = marked.parse(accumulatedText);
+                                    }
+                                    if (messagesContainer) messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                chats[chatIndex].messages[chats[chatIndex].messages.length - 1].content = `**Error:** ${error.message}`;
+                DB.saveChats(user.email, chats);
+                showToast(error.message, 'error');
+                render();
+            } finally {
+                isGenerating = false;
+            }
+        }
+
+        window.onload = initApp;
+    </script>
+</body>
+</html>
